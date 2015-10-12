@@ -22,7 +22,7 @@ USE FROM IFC4 (
 
 
 TYPE IfcPointCloudCoordinateSelect = SELECT
-    (IfcCartesianPointList
+    (IfcCartesianPointList3D
     ,IfcParameterValueList
     ,IfcGridOffsetList);
 END_TYPE;
@@ -65,6 +65,8 @@ ENTITY IfcDiscreteParameterValueList
     USampleWidth : INTEGER;
     VSampleWidth : INTEGER;
     WSampleWidth : INTEGER;
+ WHERE
+    WR1 : SIZEOF(QUERY(UVW <* SELF\IfcDiscreteParameterValueList.Values | ((UVW[0] < 0) OR (UVW[1] < 0) OR (UVW[2] < 0) OR (UVW[0] > USampleWidth) OR (UVW[1] >= VSampleWidth) OR (UVW[2] >= WSampleWidth)))) == 0;
 END_ENTITY;
 
 TYPE IfcPointCloudAttribute = SELECT
@@ -79,10 +81,11 @@ ENTITY IfcPointCloud
     LevelOfDetail : OPTIONAL IfcLabel;
     Coordinates   : IfcPointCloudCoordinateSelect;
     Attributes    : LIST [0:?] OF IfcPointCloudAttribute;
- --WHERE
-
-    -- TODO: WHERE rule to guarantee same index lengths for 
-    (* How to maintain same length of vectors? *)
+ WHERE
+    -- All attributes in vector have same number of elements as coordinates
+    WR1 : QUERY(Attr <* SELF\IfcPointCloud.Attributes | ((('IFC2X3.IFCCARTESIANPOINTLIST3D' IN TYPEOF(SELF\IfcPointCloud.Coordinates)) AND SIZEOF(Coordinates.CoordList) <> SIZEOF(Attr)) OR
+                                                         (('IFC2X3.IFCPARAMETERVALUELIST' IN TYPEOF(SELF\IfcPointCloud.Coordinates)) AND SIZEOF(Coordinates.Values) <> SIZEOF(Attr)) OR  
+                                                         (('IFC2X3.IFCGRIDOFFSETLIST' IN TYPEOF(SELF\IfcPointCloud.Coordinates)) AND (SIZEOF(Coordinates.Offsets) * SIZEOF(Coordinates.Offsets[0])) <> SIZEOF(Attr)))) == 0;
 END_ENTITY;
 
 TYPE IfcGridSelect = SELECT 
@@ -100,22 +103,41 @@ ENTITY IfcSurfaceGrid
 END_ENTITY;
 
 ENTITY IfcGridOffsetList
- ABSTRACT SUPERTYPE OF (ONEOF (IfcContinuousGridOffsetList, IfcDiscreteGridOffsetList))
+ ABSTRACT SUPERTYPE OF (ONEOF(IfcContinuousGridOffsetList, IfcDiscreteGridOffsetList))
  SUBTYPE OF (IfcGeometricRepresentationItem);
     Grid                : IfcGridSelect;
     MinOrthogonalOffset : IfcLengthMeasure; 
     MaxOrthogonalOffset : IfcLengthMeasure;
+    CoverageMask        : OPTIONAL LIST [1:?] OF LIST [1:?] OF BOOLEAN;
 END_ENTITY;
 
 ENTITY IfcContinuousGridOffsetList
  SUBTYPE OF (IfcGridOffsetList);
     Offsets             : LIST [1:?] OF LIST [1:?] OF IfcParameterValue;
+ WHERE
+    -- Same dims as CoverageMask
+    WR1 : NOT(EXISTS(CoverageMask)) OR (QUERY(Temp1 <* Offsets | SIZEOF(Temp1)) == QUERY(Temp2 <* CoverageMask | SIZEOF(Temp2)));
+    -- Rectangular grid:
+    WR2 : SIZEOF(QUERY(Row <* Offsets | SIZEOF(Row) == SIZEOF(Offsets[0]))) == 0;
+    -- Same dims as grid
+    WR3 : ((NOT('IFC2X3.IFCSURFACEGRID' IN TYPEOF(Grid)) OR ((Grid.NumUAxes == SIZEOF(Offsets[0])) AND (Grid.NumVAxes == SIZEOF(Offsets)))) AND
+           (NOT('IFC2X3.IFCGRID' IN TYPEOF(Grid)) OR ((SIZEOF(Grid.UAxes) == SIZEOF(Offsets[0])) AND (SIZEOF(Grid.VAxes) == SIZEOF(Offsets)) AND (SIZEOF(Grid.WAxes) == 0))));
 END_ENTITY;
 
 ENTITY IfcDiscreteGridOffsetList
  SUBTYPE OF (IfcGridOffsetList);
     Offsets             : LIST [1:?] OF LIST [1:?] OF INTEGER;
     SampleWidth         : INTEGER;
+ WHERE
+    -- Same dims as CoverageMask
+    WR1 : NOT(EXISTS(CoverageMask)) OR (QUERY(Temp1 <* Offsets | SIZEOF(Temp1)) == QUERY(Temp2 <* CoverageMask | SIZEOF(Temp2)));
+    -- Rectangular grid:
+    WR2 : SIZEOF(QUERY(Row <* Offsets | SIZEOF(Row) == SIZEOF(Offsets[0]))) == 0;
+    -- Same dims as grid, if IfcGrid -> 2d (no WAxes)
+    WR3 : ((NOT('IFC2X3.IFCSURFACEGRID' IN TYPEOF(Grid)) OR ((Grid.NumUAxes == SIZEOF(Offsets[0])) AND (Grid.NumVAxes == SIZEOF(Offsets)))) AND
+           (NOT('IFC2X3.IFCGRID' IN TYPEOF(Grid)) OR ((SIZEOF(Grid.UAxes) == SIZEOF(Offsets[0])) AND (SIZEOF(Grid.VAxes) == SIZEOF(Offsets)) AND (NOT(EXISTS(Grid.WAxes))))));
+    -- Within in [0, SampleWidth]
+    WR4 : SIZEOF(QUERY(Temp <* Offsets | QUERY(W <* Temp | ((W < 0) OR (W > SampleWidth))))) == 0;
 END_ENTITY;
 
 ENTITY IfcPointCloudElement
