@@ -22,11 +22,34 @@
       <h1>
 <a id="ifcpointcloud" class="anchor" href="#ifcpointcloud" aria-hidden="true"><span class="octicon octicon-link"></span></a>IfcPointCloud</h1>
 
+<p><img src="https://raw.githubusercontent.com/DURAARK/IFCPointCloud/master/schema/ExpressG/ifc_pc_association.png" alt="IFC model with associated point clouds"></p>
+
 <p>In this repository an extension to the Industry Foundation Classes schema is introduced with the capabilities to efficiently describe and store point cloud data. The repository contains schemas, prototype tools and documentation.</p>
 
 <p>The prototype tool is capable of associating external point clouds and describing them parametrically according to IFC building surfaces. As such, a unified format of IFC building data is obtained that represents point cloud data more efficiently than prevalent point cloud formats. The decomposition and association between the two data sources enriches the semantics of both. The point clouds are labelled with the building elements they describe and can be navigated according to the spatial subdivision structure of IFC. IFC building elements obtain an additional detailed representation that describes surface characteristics and the exact as-built physical form.</p>
 
 <p>A binary serialization is introduced that writes IFC files (with or without point clouds) in an efficient hierarchical structure for efficient partial retrieval. This binary serialization format is based on ISO-13030-26 and uses the HDF5 file format.</p>
+
+<h1>
+<a id="schema-extension" class="anchor" href="#schema-extension" aria-hidden="true"><span class="octicon octicon-link"></span></a>Schema extension</h1>
+
+<p><img src="https://raw.githubusercontent.com/DURAARK/IFCPointCloud/master/schema/ExpressG/schema_main.png" alt="The main elements of the proposed schema extension"></p>
+
+<p>In this image the main entities are listed that have been added to the schema in order to enable semantically rich point cloud segments to be stored alongside IFC building elements.</p>
+
+<h1>
+<a id="hdf5-serialization" class="anchor" href="#hdf5-serialization" aria-hidden="true"><span class="octicon octicon-link"></span></a>HDF5 serialization</h1>
+
+<p>For efficient binary serialization and deserialization of files up and over gigabytes in size, a new serialization format for IFC is proposed analogous to ISO 10303-26. Based on HDF5, an open standard embraced by established scientific institutions. An example of a dataset opened in a general purpose HDF5 viewer is shown below. The self-documentation nature of HDF5 allows for inspection and analysis of the data using general purpose tools. The hierarchical binary nature allows for constant-time retrieval of specific entity instances, regardless of the size of the model.</p>
+
+<p><img src="https://raw.githubusercontent.com/DURAARK/IFCPointCloud/master/schema/ExpressG/HDFViewHaus30.png" alt="General purpose HDF5 viewer inspecting and IFC + Point cloud dataset"></p>
+
+<h1>
+<a id="point-cloud-compression" class="anchor" href="#point-cloud-compression" aria-hidden="true"><span class="octicon octicon-link"></span></a>Point cloud compression</h1>
+
+<p>The schema extension embraces state of the art point cloud compression techniques that can be layered to obtain optimal compression ratios. Floating point values can be discretized using scaled integers and three dimensional point clouds can be stored as one dimensional height-maps relative to IFC building element surfaces. Furthermore general purpose HDF5 compression can be applied to further reduce the size of the data without impacting semantic detail and ease of use.</p>
+
+<p><img src="https://raw.githubusercontent.com/DURAARK/IFCPointCloud/master/schema/ExpressG/point_cloud_interpolation.png" alt="Three dimensional point cloud, compressed as a one dimensional heightmap"></p>
 
       <footer class="site-footer">
         <span class="site-footer-owner"><a href="https://github.com/DURAARK/IFCPointCloud">IfcPointCloud</a> is maintained by <a href="https://github.com/DURAARK">DURAARK</a>.</span>
