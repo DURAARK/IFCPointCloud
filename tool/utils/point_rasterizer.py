@@ -12,10 +12,10 @@ grid = namedtuple('grid', 'placement unum vnum uspacing vspacing'.split())
 grid_values = namedtuple('grid_values', 'grid values'.split())
 
 class rasterizer(object):
-    def __init__(self, face_bounds_file):
-        self.face_bounds = pickle.load(open(face_bounds_file, "rb"))
+    def __init__(self, face_bounds):
+        self.face_bounds = face_bounds
 
-    def rasterize(eid, fid, uvws, grid_spacing=0.1):
+    def rasterize(self, eid, fid, uvws, grid_spacing=0.1):
         
         (u1, v1), (u2, v2) = self.face_bounds[(eid, fid)]
         minu, minv, maxu, maxv = min(uvws[:,0]), min(uvws[:,1]), max(uvws[:,0]), max(uvws[:,1])

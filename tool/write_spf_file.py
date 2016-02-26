@@ -22,13 +22,14 @@ else:
 
 from collections import namedtuple, defaultdict
 
-from utils import point_rasterizer, point_reader
+from utils import point_reader
 
 # from ifc_math import *
 
 ALL_POINTS_AS_UNASSOCIATED = '--all_points_as_unassociated' in sys.argv
 ONLY_INCLUDE_UNASSOCIATED = '--only_include_unassociated' in sys.argv
-SINGLE_ASSIGNMENT = True # due to h5py vlen limitations
+ONLY_INCLUDE_UNASSOCIATED_SEGMENTED = '--only_include_unassociated_segmented' in sys.argv
+SINGLE_ASSIGNMENT = False # due to h5py vlen limitations
 
 INTERMEDIATE_DIR = "intermediate_files"
 
@@ -41,7 +42,7 @@ def get_argparser():
     argp.add_argument('ifc_file')
     return argp
 
-if not ALL_POINTS_AS_UNASSOCIATED and not ONLY_INCLUDE_UNASSOCIATED:
+if not ALL_POINTS_AS_UNASSOCIATED and not ONLY_INCLUDE_UNASSOCIATED and not ONLY_INCLUDE_UNASSOCIATED_SEGMENTED:
     argp = get_argparser()
     argp.add_argument('grid_spacing', type=float)
     argp.add_argument('store_unassociated', choices=['without_unassociated', 'unassociated_cartesian', 'unassociated_segmented'])
@@ -69,10 +70,19 @@ else:
     if ALL_POINTS_AS_UNASSOCIATED: 
         flag_name = 'without-association'
         STORE_UNASSOCIATED = True
+        # This has to be set to false, because segmentation has not been
+        # performed for the unassociated points.
+        STORE_UNASSOCIATED_SEGMENTED = False
         GRID_SPACING = 1e-9
     elif ONLY_INCLUDE_UNASSOCIATED: 
         flag_name = 'only-unassociated'
         STORE_UNASSOCIATED = True
+        STORE_UNASSOCIATED_SEGMENTED = False
+        GRID_SPACING = 1e-9
+    elif ONLY_INCLUDE_UNASSOCIATED_SEGMENTED: 
+        flag_name = 'only-unassociated-segmented'
+        STORE_UNASSOCIATED = True
+        STORE_UNASSOCIATED_SEGMENTED = True
         GRID_SPACING = 1e-9
     else: raise Exception()
     
@@ -90,6 +100,10 @@ IFC_FN_FLAGS  = "generated_files/spf/" + IFC_FILE_BASE + "-".join(flags)
 IFC_PC_FN     = IFC_FN_FLAGS + ".ifc"
 IFC_FACE_INFO = os.path.join(INTERMEDIATE_DIR, IFC_FILE_BASE, "face_information.json")
 IFC_PRODUCTS  = os.path.join(INTERMEDIATE_DIR, IFC_FILE_BASE, "face_information.json")
+
+if GRID_SPACING > 1e-5:
+    from utils import point_rasterizer, face_bounds
+    rasterizer = point_rasterizer.rasterizer(face_bounds.get_mapping(IFC_FN))
 
 if not os.path.exists(os.path.dirname(IFC_FN_FLAGS)): os.makedirs(os.path.dirname(IFC_FN_FLAGS))
 
@@ -196,7 +210,7 @@ if STORE_UNASSOCIATED:
 
 del global_ds
 
-if ONLY_INCLUDE_UNASSOCIATED: datasets = {}
+if ONLY_INCLUDE_UNASSOCIATED or ONLY_INCLUDE_UNASSOCIATED_SEGMENTED: datasets = {}
 
 # Carefully iterate over a copy of the keys so that elements can be freed as IFC representations of them are created in order not to consume more memory
 # Additionally: <eid, fid> pairs are sorted so that IfcRelAssignsToProduct can be grouped per RelatingProduct
@@ -251,13 +265,20 @@ for dataset_key in sorted(datasets.keys()):
     
     try_rasterization = GRID_SPACING > 1e-5 and not np.isinf(density) and len(numpy_array) > 4 # and density > (0.1 / (GRID_SPACING * GRID_SPACING)) 
     
-    is_smaller = big_enough = False
+    is_smaller = big_enough = percentage_nan_low = False
     if try_rasterization:
         rasterized = rasterizer.rasterize(eid, fid, numpy_array, grid_spacing=GRID_SPACING)
-        is_smaller = (rasterized.values.nbytes < numpy_array.nbytes)
-        big_enough = sum(~np.isnan(rasterized.values.flatten())) > 16  # rasterized.values.size > 16
+        is_smaller = (rasterized.values.nbytes < numpy_array.nbytes // 2)
+        num_non_nans = sum(~np.isnan(rasterized.values.flatten()))
+        num_nans = sum( np.isnan(rasterized.values.flatten()))
+        big_enough = num_non_nans > 16  # rasterized.values.size > 16
+        percentage_nan_low = num_non_nans > num_nans 
         
-    if try_rasterization and is_smaller and big_enough:
+    if try_rasterization and is_smaller and big_enough and percentage_nan_low:
+        # Some debugging information:
+        # print 'Rasterized %d / %d' % (num_non_nans, num_non_nans + num_nans)
+        # print '%d -> %d bytes' % (numpy_array.nbytes, rasterized.values.nbytes)
+        
         if USE_LEGACY_GRID:
             grid_origin = f.createIfcCartesianPoint(tupelize1d(rasterized.grid.placement))
             first_u_axis = f.createIfcLine(grid_origin, f.createIfcVector(f.createIfcDirection((1., 0.)), 1.))
@@ -281,15 +302,14 @@ for dataset_key in sorted(datasets.keys()):
         # The rasterizer returns uncovered cells as NaN, in 
         # the schema these are written as a separate attribute
         mask = None
+        values = rasterized.values
         nans = np.isnan(values)
         num_nans = np.sum(nans)
+        min_value, max_value = map(float, (min2d(values), max2d(values)))
         if num_nans > 0:
             values[nans] = (min_value + max_value) / 2.
-            mask = tupelize2d_map(bool, mask)
-        
-        values = rasterized.values
-        min_value, max_value = map(float, (min2d(values), max2d(values)))
-        
+            mask = tupelize2d_map(bool, nans)
+                
         if USE_DISCRETE_PARAM:
             values = discretisize2d(256)((values - min_value) / (max_value - min_value))
             points = f.createIfcDiscreteGridOffsetList(

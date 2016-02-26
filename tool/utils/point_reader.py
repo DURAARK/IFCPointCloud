@@ -9,6 +9,40 @@ associated_point = namedtuple("associated_point", list("xyzefuvd"))
 free_point = namedtuple("associated_point", list("xyz"))
 
 def obtain_points(filename_pattern, range=None, associate=True):
+    import array
+    if range is None: range = itertools.count()
+
+    for i in range:
+        if os.path.exists(filename_pattern % i) and not os.path.exists((filename_pattern % i) + ".lock"):
+            sys.stderr.write("\r[pass %d] Reading association data" % i)
+            with open(filename_pattern % i, "rb") as f:
+                s = os.fstat(f.fileno()).st_size // 8
+                ds, qs = array.array("d"), array.array("L")
+                ds.fromfile(f, s)
+                f.seek(0)
+                qs.fromfile(f, s * 2) # no long long support
+                n = 0
+                while n < s:
+                    xyz = ds[n:n+3]
+                    n += 3
+                    has_assoc = qs[2*n]
+                    n += 1
+                    if has_assoc:
+                        ef = qs[2*n:2*n+4]
+                        ef = (ef[1]<<32) + ef[0], (ef[3]<<32) + ef[2]
+                        n += 2
+                        uvd = ds[n:n+3]
+                        n += 3
+                        if associate:
+                            yield associated_point(*(tuple(xyz)+ef+tuple(uvd)))
+                        else:
+                            yield free_point(*xyz)
+                    else:
+                        yield free_point(*xyz)
+        else: break
+    print ""
+
+def obtain_points_old(filename_pattern, range=None, associate=True):
     if range is None: range = itertools.count()
 
     for i in range:
@@ -53,7 +87,8 @@ class buffered_dataset:
         return self.ds
     def add(self, *args):
         self.buffer.append(np.array(args))
-        if len(self.buffer) > 1000: self.merge()
+        # uncomment this if you are worried about memory usage
+        # if len(self.buffer) > 1000: self.merge()
         
 def read(filename_pattern, range=None, associate=True):
     datasets = {}
