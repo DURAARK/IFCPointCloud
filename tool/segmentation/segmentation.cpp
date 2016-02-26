@@ -167,10 +167,15 @@ void output(const std::string& dir, int n, const std::vector<float>& coef, pcl::
 	delete[] buffer;
 }
 
-void load_data(pcl::PointCloud<point_t>& cloud, const std::string& filename) {
+bool load_data(pcl::PointCloud<point_t>& cloud, const std::string& filename) {
 	std::cout << filename << std::endl;
 
 	std::ifstream fs(filename.c_str(), std::ios_base::binary);
+	
+	if (!fs.is_open()) {
+		return false;
+	}
+
 	fs.seekg(0, std::ios::end); 
 	size_t s = fs.tellg();
 	fs.seekg(0, std::ios::beg);
@@ -197,6 +202,8 @@ void load_data(pcl::PointCloud<point_t>& cloud, const std::string& filename) {
 	}
 
 	delete[] start;
+
+	return true;
 }
 
 static char* methods[] = {"RANSAC", "LMEDS", "MSAC", "RRANSAC", "RMSAC", "MLESAC", "PROSAC"};
@@ -245,8 +252,9 @@ int main (int argc, char** argv) {
 
 	for(int i = 0; i < 100; ++i) {
 		const size_t old_size = cloud->size();
-		load_data(*cloud, make_input_filename(dir_name, i));
-		std::cerr << "Loaded " << (cloud->size() - old_size) << " points" << std::endl;
+		if (load_data(*cloud, make_input_filename(dir_name, i))) {
+			std::cerr << "Loaded " << (cloud->size() - old_size) << " points" << std::endl;
+		}
 	}
 	
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
