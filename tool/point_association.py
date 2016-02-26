@@ -1,13 +1,20 @@
 import os
 import sys
 import json
+import time
 import struct
 import random
+import platform
 import argparse
 import itertools
 
-import ifcopenshell
-import ifcopenshell.geom
+if platform.architecture()[0] == '64bit':
+    import ifcopenshell_x64
+    import ifcopenshell_x64.geom
+    ifcopenshell = ifcopenshell_x64
+else:
+    import ifcopenshell
+    import ifcopenshell.geom
 
 import OCC
 import OCC.gp
@@ -26,7 +33,6 @@ import numpy.linalg as linalg
 
 from collections import defaultdict, namedtuple
 
-from PyQt4 import QtCore, QtGui
 from rtree import index
 
 from utils import pcd_file, geometry_cache, face_parameterization, face_information
@@ -46,6 +52,9 @@ ns = argp.parse_args()
 USE_DISPLAY, IFC_FILE, PCD_FILES, ALIGNMENT_MATRIX_FILE = \
     ns.use_display, ns.ifc_file, ns.pcd_files, ns.alignment_matrix
     
+if USE_DISPLAY:
+    from PyQt4 import QtGui
+    
 ALIGNMENT_MATRIX = np.array(json.load(open(ALIGNMENT_MATRIX_FILE)))
 
 IFC_FILE_BASE = os.path.splitext(os.path.basename(IFC_FILE))[0]
@@ -56,13 +65,11 @@ OUTPUT_DIR = os.path.join(INTERMEDIATE_DIR, IFC_FILE_BASE, "associated_points")
 
 if not os.path.exists(OUTPUT_DIR): os.makedirs(OUTPUT_DIR)
 
-if os.path.exists(os.path.join(INTERMEDIATE_DIR, '3d_index.dat')):
-    os.unlink(os.path.join(INTERMEDIATE_DIR, '3d_index.dat'))
-    os.unlink(os.path.join(INTERMEDIATE_DIR, '3d_index.idx'))
-    
+INDEX_FILE = os.path.join(INTERMEDIATE_DIR, '%s_%d_%d_3d_index' % (IFC_FILE_BASE, time.time(), os.getpid()))
+
 index_properties = index.Property()
 index_properties.dimension = 3
-spatial_index = index.Index(os.path.join(INTERMEDIATE_DIR, '3d_index'), properties=index_properties)
+spatial_index = index.Index(INDEX_FILE, properties=index_properties)
 index_counter = 1
 
 if USE_DISPLAY:
@@ -153,11 +160,9 @@ ASSOCIATED_OUTPUT_FN = os.path.join(OUTPUT_DIR, "points-subset-%d.bin")
 
 def load_and_associate_point_cloud(scan_number, point_pass):
     global associated_point_file
-    pcdf = pcd_file.open(PCD_FILES % scan_number)
+    pcdf = pcd_file.open(PCD_FILES % scan_number, mod=POINT_PASSES)
     sys.stderr.write("\r[pass %d] processing scan %d  " % (j, i))
     for point_idx, (x,y,z) in enumerate(pcdf):
-        if point_idx % POINT_PASSES != point_pass: continue
-        
         a = np.dot(ALIGNMENT_MATRIX, np.array((x,y,z,1.)))
         x,y,z = a[:3]
         
@@ -213,26 +218,34 @@ print "Loading IFC file"
 load_ifc_file_per_face()
 
 assoc_files = []
-    
-for j in range(POINT_PASSES):
-    # This will likely go out of memory at some point, but the script is re-entrant.
-    fn, lock_fn = (ASSOCIATED_OUTPUT_FN % j), (ASSOCIATED_OUTPUT_FN + ".lock") % j
-    if not os.path.exists(fn) or os.path.exists(lock_fn):
-        with open(lock_fn, "wb"): pass
-        associated_point_file = open(fn, "wb")
-        for i in itertools.count():
-            try: load_and_associate_point_cloud(i, j)
-            except IOError: break
-            associated_point_file.flush()
-        os.unlink(lock_fn)
-        associated_point_file.close()
-        assoc_files.append(fn)
-    
+
+try:
+    for j in range(POINT_PASSES):
+        # This will likely go out of memory at some point, but the script is re-entrant.
+        fn, lock_fn = (ASSOCIATED_OUTPUT_FN % j), (ASSOCIATED_OUTPUT_FN + ".lock") % j
+        if not os.path.exists(fn) and not os.path.exists(lock_fn):
+            with open(lock_fn, "wb"): pass
+            associated_point_file = open(fn, "wb")
+            for i in itertools.count():
+                try: load_and_associate_point_cloud(i, j)
+                except IOError: break
+                associated_point_file.flush()
+            os.unlink(lock_fn)
+            associated_point_file.close()
+            assoc_files.append(fn)
+except KeyboardInterrupt:
+    print "\n[Ctrl]+[C] / Assocation interrupted by user"
+        
 sys.stderr.write("\nDone :)\n")
 
 print "Writing face information"
 with open(os.path.join(INTERMEDIATE_DIR, IFC_FILE_BASE, "face_information.json"), "w") as f:
     f.write(face_information.obtain(IFC_FILE))
+
+del spatial_index
+if os.path.exists(INDEX_FILE + ".dat"):
+    os.unlink(INDEX_FILE + ".dat")
+    os.unlink(INDEX_FILE + ".idx")
     
 if USE_DISPLAY:
     ifcopenshell.geom.utils.main_loop()

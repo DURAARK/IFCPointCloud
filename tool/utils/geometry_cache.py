@@ -1,6 +1,13 @@
-import os, gzip
-import ifcopenshell, ifcopenshell.geom
+import os, gzip, platform
 import OCC.BRepTools
+
+if platform.architecture()[0] == '64bit':
+    import ifcopenshell_x64
+    import ifcopenshell_x64.geom
+    ifcopenshell = ifcopenshell_x64
+else:
+    import ifcopenshell
+    import ifcopenshell.geom
 
 # Specify to return pythonOCC shapes from ifcopenshell.geom.create_shape()
 settings = ifcopenshell.geom.settings()
