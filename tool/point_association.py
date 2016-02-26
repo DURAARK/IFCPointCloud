@@ -160,9 +160,9 @@ ASSOCIATED_OUTPUT_FN = os.path.join(OUTPUT_DIR, "points-subset-%d.bin")
 
 def load_and_associate_point_cloud(scan_number, point_pass):
     global associated_point_file
-    pcdf = pcd_file.open(PCD_FILES % scan_number, mod=POINT_PASSES)
+    pcdf = pcd_file.open(PCD_FILES % scan_number, mod=(POINT_PASSES, point_pass))
     sys.stderr.write("\r[pass %d] processing scan %d  " % (j, i))
-    for point_idx, (x,y,z) in enumerate(pcdf):
+    for x,y,z in pcdf:
         a = np.dot(ALIGNMENT_MATRIX, np.array((x,y,z,1.)))
         x,y,z = a[:3]
         

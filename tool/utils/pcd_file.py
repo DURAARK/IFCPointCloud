@@ -10,8 +10,9 @@ def open(fn, mod=None):
             xyz = tuple(map(float, l.split()[0:3]))
             yield xyz
     else:
+        mod1, mod2 = mod
         for i, l in enumerate(f):
-            if i % mod == 0: 
+            if i % mod1 == mod2: 
                 xyz = tuple(map(float, l.split()[0:3]))
                 yield xyz
         
